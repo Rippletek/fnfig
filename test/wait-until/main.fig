@@ -1,0 +1,3 @@
+step1
+wait 1 until check_if_3second
+step2
