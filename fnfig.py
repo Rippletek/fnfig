@@ -25,14 +25,6 @@ def do_file_exist(file):
     return pathlib.Path(file).is_file()
 
 
-def get_service_dir():
-    return os.path.basename(os.getcwd())
-
-
-def get_service_name():
-    return get_service_dir().replace('_', '-')
-
-
 def get_package_name(fig_file):
     return pathlib.Path(fig_file).stem
 
