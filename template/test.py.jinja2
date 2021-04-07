@@ -1,0 +1,15 @@
+import fig_runner
+import {{basename}}
+from fig_utils import FakeFDL, FakeResponder, Struct
+
+
+if __name__ == "__main__":
+    fig_runner._initializer_runner()
+
+    # example
+    # def es_post(x):
+    #     print('post to es:', x)
+    #     return Struct(status_code=200)
+    # main.es_client = FakeResponder({'post': es_post})
+
+    FakeFDL(fig_runner._handler, {}, {}).run()

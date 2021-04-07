@@ -1,0 +1,26 @@
+import json
+from {{basename}} import {{', '.join(funcs)}}
+from fig_utils import Handler, check_go_to
+
+
+runner = None
+
+
+def _initializer_runner():
+    global runner
+    runner = Handler(globals(), '{{statement["method_name"]}}')
+
+
+def _initializer(context):
+    _initializer_runner()
+    initializer(context)
+
+
+def _handler(event, context):
+    jevent = json.loads(event)
+    if 'result' not in jevent:
+        jevent['result'] = {k: v for k, v in jevent.items() if not k.startswith('fdl_')}
+        event = json.dumps(jevent)
+
+    return runner.run(event, context)
+

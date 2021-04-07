@@ -1,0 +1,9 @@
+initx
+addx_all
+foreach addx
+verify1
+verify2
+add1_all
+wait 10
+foreach add1
+verify3
