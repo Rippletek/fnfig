@@ -121,7 +121,8 @@ def initializer(context):
 
 
 def create_ecs(result):
-    instance_id = ecs_client.create_ecs()
+    cloud_init_data = "some cloud init scripts"
+    instance_id = ecs_client.create_ecs(cloud_init_data)
     result['instanceId'] = instance_id
     return result
 
@@ -233,6 +234,152 @@ if __name__ == "__main__":
     })
 
     FakeFDL(fig_runner._handler, {}, {}).run()
+```
+
+运行测试
+
+```
+bash test.sh
+```
+
+
+### 图片批量添加水印
+
+OSS中多张图片需要添加水印，由于FC最长执行时间只有十分钟，在一个FC中处理可能会超时。推荐的做法是使用FNF的foreach来并行批量调用FC，每个FC只处理一张图片。
+
+代码逻辑：
+
+1. 从OSS获取需要添加水印的图片地址
+2. 并行启动多个FC，分别将不同的图片地址传给每个FC
+3. FC获取图片，添加水印后将新的图片传入OSS，返回水印图片地址。添加失败（如格式错误）则返回`None`
+4. 待所有FC执行完成拿到所有水印图片地址，过滤失败的图片后返回给调用方
+
+使用fnfig创建项目：
+
+一，创建FIG描述文件`main.fig`
+
+```
+mkdir add-watermarks
+
+cd add-watermarks
+
+cat <<EOF > main.fig
+get_original_images_from_oss
+foreach add_watermark
+filter_results
+EOF
+```
+
+二，生成代码框架
+
+执行命令：
+
+```
+python3 /path-of-fnfig/fnfig.py main.fig
+```
+
+`main.py`骨架：
+
+```
+# import fig_utils
+
+
+def initializer(_context): pass
+
+
+def get_original_images_from_oss(args): return args, []
+
+
+def add_watermark(args, value): return value
+
+
+def filter_results(args, values): return args
+```
+
+`get_original_images_from_oss`之后的`add_watermark`由于是foreach方法，所以`get_original_images_from_oss`需要额外返回一个列表用于map。而`add_watermark`则多了一个输入参数用于接受列表map后的元素，这里对应的就是图片地址，添加水印后返回新的地址。`filter_results`也多了一个输入参数`values`，它是所有FC返回的结果列表，也就是所有水印图片的地址。
+
+三，实现业务代码
+
+编辑`main.py`实现自己的业务逻辑。
+
+```
+import fig_utils
+import datetime
+
+
+def initializer(_context):
+    pass
+
+
+def get_original_images_from_oss(args):
+    if datetime.datetime.now().weekday() in [5, 6]:
+        return fig_utils.go_to_end()
+
+    image_keys = get_sub_keys_from_oss_key(args['oss_key'])
+    return args, image_keys
+
+
+def add_watermark(_args, image_key): 
+    image = get_images_from_oss_key(image_key)
+
+    try:
+        watermark_image = add_watermark_by_pil(image)
+        watermark_image_key = upload_file_to_oss(watermark_image)
+    except Exception as e:
+        print(f"error: {e}")
+        watermark_image_key = None
+
+    return watermark_image_key
+
+
+def filter_results(_args, watermark_image_keys):
+    return list(filter(lambda key: key is not None, watermark_image_keys))
+
+```
+
+在`get_original_images_from_oss`方法中，判断了当前是否为周末，如果是周末就调用`fig_utils.go_to_end`直接返回。这是fnfig提供的一个helper，意味直接结束，不必执行后面的步骤。
+
+
+#### 测试代码
+
+`test.py`
+
+```
+import datetime
+
+import main
+import fig_runner
+from fig_utils import FakeFDL, FakeResponder, Struct
+
+
+if __name__ == "__main__":
+    fig_runner._initializer_runner()
+
+    def fake_get_sub_keys_from_oss_key(_key):
+        return ["image1_key", "image2_key"]
+    main.get_sub_keys_from_oss_key = fake_get_sub_keys_from_oss_key
+
+    def fake_get_images_from_oss_key(key):
+        return key.replace("_key", "")
+    main.get_images_from_oss_key = fake_get_images_from_oss_key
+
+    def fake_add_watermark_by_pil(image):
+        if image == 'image1':
+            return 'watermark_image1'
+        raise Exception("invalid image")
+    main.add_watermark_by_pil = fake_add_watermark_by_pil
+
+    def fake_upload_file_to_oss(image):
+        return f"{image}_key"
+    main.upload_file_to_oss = fake_upload_file_to_oss
+
+    results = FakeFDL(fig_runner._handler, {'oss_key': 'oss_key'}, {}).run()
+    if datetime.datetime.now().weekday() in [5, 6]:
+        expect_results = []
+    else:
+        expect_results = ['watermark_image1_key']
+
+    assert results == expect_results
 ```
 
 运行测试
