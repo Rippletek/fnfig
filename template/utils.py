@@ -88,6 +88,7 @@ class FakeFDL:
                 print(f'waiting for {ws} seconds..')
                 time.sleep(1)
                 continue
+        return self.args['result']
 
 
 class Struct:

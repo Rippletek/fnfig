@@ -212,7 +212,7 @@ def gen_main_method(scurrent, rest_statements, sprevious):
     elif scurrent['method_type'] == STATEMENT_LOOP:
         lines += [f'def {scurrent["values"][0]}(args, value): return value']
     elif scurrent['method_type'] == STATEMENT_WAITUNTIL:
-        lines += [f'def {scurrent["values"][1]}(args): return args']
+        lines += [f'def {scurrent["values"][1]}(args): return True']
 
     return lines
 
