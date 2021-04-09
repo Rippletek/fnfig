@@ -331,8 +331,7 @@ def add_watermark(_args, image_key):
 
 
 def filter_results(_args, watermark_image_keys):
-    return list(filter(lambda key: key is not None, watermark_image_keys))
-
+    return [key for key in watermark_image_keys if key is not None]
 ```
 
 在`get_original_images_from_oss`方法中，判断了待处理的图片是否为空，如果为空就调用`fig_utils.go_to_end`直接返回。这是fnfig提供的一个helper，意味直接结束，不必执行后面的步骤。
