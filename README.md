@@ -109,7 +109,6 @@ def delete_ecs(args): return args
 编辑`main.py`实现自己的业务逻辑。
 
 ```
-# import fig_utils
 import datetime
 
 ecs_client = None
@@ -304,7 +303,6 @@ def filter_results(args, values): return args
 
 ```
 import fig_utils
-import datetime
 
 
 def initializer(_context):
@@ -312,10 +310,10 @@ def initializer(_context):
 
 
 def get_original_images_from_oss(args):
-    if datetime.datetime.now().weekday() in [5, 6]:
-        return fig_utils.go_to_end()
-
     image_keys = get_sub_keys_from_oss_key(args['oss_key'])
+    if len(image_keys) == 0:
+        return fig_utils.go_to_end([])
+
     return args, image_keys
 
 
@@ -337,7 +335,9 @@ def filter_results(_args, watermark_image_keys):
 
 ```
 
-在`get_original_images_from_oss`方法中，判断了当前是否为周末，如果是周末就调用`fig_utils.go_to_end`直接返回。这是fnfig提供的一个helper，意味直接结束，不必执行后面的步骤。
+在`get_original_images_from_oss`方法中，判断了待处理的图片是否为空，如果为空就调用`fig_utils.go_to_end`直接返回。这是fnfig提供的一个helper，意味直接结束，不必执行后面的步骤。
+
+这里不直接返回的话在功能上也是没有问题的，fnfig的foreach可以正确处理列表为空的情况。但直接返回可以减少一些FNF转换步骤，成本上更有优势。
 
 
 #### 测试代码
@@ -345,8 +345,6 @@ def filter_results(_args, watermark_image_keys):
 `test.py`
 
 ```
-import datetime
-
 import main
 import fig_runner
 from fig_utils import FakeFDL, FakeResponder, Struct
@@ -374,12 +372,7 @@ if __name__ == "__main__":
     main.upload_file_to_oss = fake_upload_file_to_oss
 
     results = FakeFDL(fig_runner._handler, {'oss_key': 'oss_key'}, {}).run()
-    if datetime.datetime.now().weekday() in [5, 6]:
-        expect_results = []
-    else:
-        expect_results = ['watermark_image1_key']
-
-    assert results == expect_results
+    assert results == ['watermark_image1_key']
 ```
 
 运行测试
