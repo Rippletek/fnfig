@@ -1,0 +1,86 @@
+ROSTemplateFormatVersion: "2015-09-01"
+Resources:
+  Function:
+    Type: ALIYUN::FC::Function
+    Properties:
+      FunctionName: {{fc_name}}
+      ServiceName: {{fc_service}}
+      Runtime: python3
+      MemorySize: {{fc_memory}}
+      Timeout: {{fc_timeout}}
+      Handler: {{entryname}}._handler
+      Initializer: {{entryname}}._initializer
+      Code:
+        ZipFile: "{{code_zip_b64}}"
+
+  Flow:
+    Type: ALIYUN::FNF::Flow
+    Properties:
+      Name: {{fnf_name}}
+      RoleArn: "acs:ram::{{account_alias}}:role/{{arn_role}}"
+      Description: "{{fnf_name}} generate by fnfig"
+      Definition: |-
+        version: v1beta1
+        type: flow
+        timeoutSeconds: {{fnf_timeout}}
+        steps:
+          - type: pass
+            name: init-vars
+            outputMappings:
+              - target: fdl_action
+                source: begin
+        
+          - type: task
+            name: do-step
+            resourceArn: "acs:fc:{{region}}:{{account_alias}}:services/{{fc_service}}/functions/{{fc_name}}"
+        
+          - type: choice
+            name: check-state
+            choices:
+              - condition: $.fdl_action == "end"
+                goto: completed
+              - condition: $.fdl_wait > 0
+                steps:
+                  - type: wait
+                    name: do-wait
+                    duration: $.fdl_wait
+        
+          - type: choice
+            name: check-state-action
+            {% if foreach_funcs|length > 0 %}
+            choices:
+              {% for foreach_func in foreach_funcs %}
+              - condition: $.fdl_action == "{{foreach_func}}"
+                steps:
+                  - type: foreach
+                    name: each
+                    iterationMapping:
+                      collection: $.fdl_foreach_keys
+                      item: fdl_key
+                    outputMappings:
+                      - target: fdl_action
+                        source: $local[0].fdl_action
+                      - target: fdl_foreach_values
+                        source: $local[*].fdl_value
+                    steps:
+                      - type: task
+                        name: each-do
+                        resourceArn: "acs:fc:{{region}}:{{account_alias}}:services/{{fc_service}}/functions/{{fc_name}}"
+                goto: do-step
+              {% endfor %}
+            {% endif %}
+            default:
+              goto: do-step
+        
+          - type: succeed
+            name: completed
+
+  {% if interval > 0 %}
+  FlowTrigger:
+    Type: ALIYUN::FNF::Schedule
+    Properties:
+      FlowName: {{fnf_name}}
+      Enable: true
+      CronExpression: 0 0/{{interval}} * * * *
+      ScheduleName: run
+  {% endif %}

@@ -6,7 +6,7 @@ cd "$( dirname "$0" )"/test
 for dir in */ ; do
     echo "test dir ${dir}"
     cd ${dir}
-    python3 ../../fnfig.py main.fig
+    python3 ../../fnfig.py init main.fig
     sh test.sh
     cat ../.gitignore | xargs rm -rf
     cd ..
