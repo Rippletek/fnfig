@@ -479,15 +479,15 @@ python3 /path-of-fnfig/fnfig.py ros main.fig \
 第一次部署时创建资源栈：
 
 ```
-aliyun ros CreateStack --region cn-shanghai --StackName fnf-demo --TemplateBody "`cat ros.json`" --TimeoutInMinutes 10
+aliyun ros CreateStack --region cn-hangzhou --StackName fnf-demo --TemplateBody "`cat ros.json`" --TimeoutInMinutes 10
 ```
 
 之后有修改时更新资源栈：
 
 ```
 # 先查询对应资源栈的ID：
-aliyun ros ListStacks --region cn-shanghai
+aliyun ros ListStacks --region cn-hangzhou
 
 # 通过ID更新资源栈：
-aliyun ros UpdateStack --region cn-shanghai --StackId ${stack_id} --TemplateBody "`cat ros.json`" --TimeoutInMinutes 10
+aliyun ros UpdateStack --region cn-hangzhou --StackId ${stack_id} --TemplateBody "`cat ros.json`" --TimeoutInMinutes 10
 ```
