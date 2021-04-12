@@ -53,7 +53,7 @@ EOF
 执行命令：
 
 ```
-python3 /path-of-fnfig/fnfig.py main.fig
+python3 /path-of-fnfig/fnfig.py skeleton main.fig
 ```
 
 `fnfig.py`根据fig文件生成代码和测试框架。
@@ -274,7 +274,7 @@ EOF
 执行命令：
 
 ```
-python3 /path-of-fnfig/fnfig.py main.fig
+python3 /path-of-fnfig/fnfig.py skeleton main.fig
 ```
 
 `main.py`骨架：
@@ -378,4 +378,116 @@ if __name__ == "__main__":
 
 ```
 bash test.sh
+```
+
+## 部署FNF
+
+fnfig可以生成资源编排（ROS）配置，直接调用阿里云命令行工具`aliyun`即可将ROS配置部署上线。
+
+这里提供一个step by step的例子来演示fnfig如何将代码部署上线。
+
+一，创建FIG描述文件`main.fig`
+
+```
+mkdir fnfig-demo
+
+cd fnfig-demo
+
+cat <<EOF > main.fig
+init_x_y
+wait 5
+add_all_x
+foreach add_x
+remove_y
+check_result
+EOF
+```
+
+二，生成代码框架
+
+```
+python3 /path-of-fnfig/fnfig.py skeleton main.fig
+```
+
+三，编辑`main.py`实现业务代码
+
+```
+def initializer(_context):
+    pass
+
+
+def init_x_y(_):
+    return {'x': 9, 'y': 12}
+
+
+def add_all_x(args):
+    return args, [1, 2, 3, 4, 5]
+
+
+def add_x(args, value):
+    return value + args['x']
+
+
+def remove_y(args, values):
+    result = [value for value in values if value != args['y']]
+    args['result'] = result
+    return args
+
+
+def check_result(args):
+    assert args['result'] == [10, 11, 13, 14]
+    print('ok!')
+    return args
+```
+
+
+四，生成ROS配置
+
+```
+python3 /path-of-fnfig/fnfig.py ros main.fig \
+        --account-alias ${account_alias} \
+        --arn-role ${arn_role} \
+        --region cn-hangzhou \
+        --interval 60 \
+        --fc-timeout 30 \
+        --fnf-timeout 60 \
+        --fc-memory 128 \
+        --fc-service ${fc_service}
+```
+
+命令支持多个配置参数：
+
+```
+  --account-alias 企业别名。必填
+  --arn-role ARN角色，授予FNF执行任务所需权限。必填 \
+  --region 阿里云区域。选填，默认为 cn-hangzhou
+  --interval FNF定时器触发周期，单位分。选填，默认为不设置定时器
+  --fc-timeout FC超时时间，单位秒。选填，默认为 30 \
+  --fnf-timeout FNF超时时间，单位秒。选填，默认为 60 \
+  --fc-memory FC内存，单位M。选填，默认为 128 \
+  --fc-service FC服务组。必填。
+```
+
+`--account-alias`、`--arn-role`及`--fc-service`为必填，其中`--arn-role`和`--fc-service`需在控制台提前创建。
+
+五，配置`aliyun`
+
+根据阿里云文档[安装](https://help.aliyun.com/document_detail/121544.html?spm=a2c4g.11186623.6.546.43255d40iF5pPX)`aliyun`并完成[配置](https://help.aliyun.com/document_detail/121258.html?spm=a2c4g.11186623.6.550.3cdd3ae5UNmfSO)。
+
+六，部署上线
+
+第一次部署时创建资源栈：
+
+```
+aliyun ros CreateStack --region cn-shanghai --StackName fnf-demo --TemplateBody "`cat ros.json`" --TimeoutInMinutes 10
+```
+
+之后有修改时更新资源栈：
+
+```
+# 先查询对应资源栈的ID：
+aliyun ros ListStacks --region cn-shanghai
+
+# 通过ID更新资源栈：
+aliyun ros UpdateStack --region cn-shanghai --StackId ${stack_id} --TemplateBody "`cat ros.json`" --TimeoutInMinutes 10
 ```

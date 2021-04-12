@@ -1,7 +1,13 @@
 import os
 import re
 import sys
+import json
+import base64
 import pathlib
+import argparse
+import tempfile
+import yaml
+from zipfile import ZipFile
 from jinja2 import Template
 
 
@@ -17,6 +23,19 @@ ENTRYNAME = 'fig_runner'
 METHOD_COMPLETED_NAME = '_completed'
 
 
+parser = argparse.ArgumentParser(description="generate fnf scripts")
+parser.add_argument("args", metavar="args", type=str, nargs="+", help="args to handle")
+parser.add_argument("--account-alias", type=str, dest="account_alias", default="",  help="set aliyun account alias")
+parser.add_argument("--arn-role", type=str, dest="arn_role", default="",  help="set aliyun ARN Role")
+parser.add_argument("--region", type=str, dest="region", default="cn-hangzhou",  help="set aliyun region")
+parser.add_argument("--interval", type=int, dest="interval", default=0,  help="set fnf interval")
+parser.add_argument("--fc-timeout", type=int, dest="fc_timeout", default=600,  help="set fc timeout")
+parser.add_argument("--fnf-timeout", type=int, dest="fnf_timeout", default=3600,  help="set fnf timeout")
+parser.add_argument("--fc-memory", type=int, dest="fc_memory", default=128,  help="set fc memory")
+parser.add_argument("--fc-service", type=str, dest="fc_service", default="monitor",  help="set fc service")
+options = parser.parse_args()
+
+
 def is_positive_int(s):
     return re.search("^[1-9][0-9]*$", s)
 
@@ -27,6 +46,14 @@ def do_file_exist(file):
 
 def get_package_name(fig_file):
     return pathlib.Path(fig_file).stem
+
+
+def get_project_dir():
+    return os.path.basename(os.getcwd())
+
+
+def get_project_name():
+    return get_project_dir().replace('_', '-')
 
 
 def gen_runner_head(statements, fig_file):
@@ -161,7 +188,9 @@ def parse_line(line, index):
     return new_statement(line, f'_func_{line}_{index}', STATEMENT_FUNC, [line])
 
 
-def parse_lines(lines):
+def parse_fig(fig_file):
+    with open(fig_file, 'r') as f:
+        lines = f.readlines()
     return [parse_line(line.strip(), index) for index, line in enumerate(lines) if line.strip() != '']
 
 
@@ -266,14 +295,78 @@ def generate_test(fig_file):
     generate_testsh()
 
 
-def main():
-    fig_file = sys.argv[1]
-    with open(fig_file, 'r') as f:
-        lines = f.readlines()
-    statements = parse_lines(lines)
-
+def generate_skeleton(fig_file):
+    statements = parse_fig(fig_file)
     generate_python(statements, fig_file)
     generate_test(fig_file)
+
+
+def create_zip():
+    zip_file = os.path.join(tempfile.mkdtemp(), "fnfig-deploy-code.zip")
+    with ZipFile(zip_file, "w") as zf:
+        for root, _, files in os.walk('.'):
+            for file in files:
+                zf.write(os.path.join(root, file))
+    return zip_file
+
+
+def create_zip_base64():
+    zip_file = create_zip()
+    with open(zip_file, "rb") as file:
+        encoded_string = base64.b64encode(file.read())
+        return encoded_string.decode("utf-8")
+
+
+def generate_ros(fig_file):
+    if options.account_alias == "":
+        print("--account-alias required!")
+        sys.exit(1)
+
+    if options.arn_role == "":
+        print("--arn-role required!")
+        sys.exit(1)
+
+    if options.fc_service == "":
+        print("--fc-service required!")
+        sys.exit(1)
+
+    statements = parse_fig(fig_file)
+    code_zip_b64 = create_zip_base64()
+    foreach_funcs = [statement['method_name'] for statement in statements if statement['method_type'] == STATEMENT_LOOP]
+    project = get_project_name()
+    items = {
+        "region": options.region,
+        "account_alias": options.account_alias,
+        "arn_role": options.arn_role,
+        "entryname": ENTRYNAME,
+        "foreach_funcs": foreach_funcs,
+        "interval": options.interval,
+        "fnf_name": project,
+        "fnf_timeout": options.fnf_timeout,
+        "fc_memory": options.fc_memory,
+        "fc_name": project,
+        "fc_service": options.fc_service,
+        "fc_timeout": options.fc_timeout,
+        "code_zip_b64": code_zip_b64,
+    }
+    cyaml = render_tpl("ros.yml.jinja2", items)
+    write_file(json.dumps(yaml.safe_load(cyaml)), os.path.join("ros.json"))
+
+
+def main():
+    if len(options.args) != 2:
+        print("action and fig file required!")
+        sys.exit(1)
+
+    action = options.args[0]
+    fig_file = options.args[1]
+    if action == "skeleton":
+        generate_skeleton(fig_file)
+    elif action == "ros":
+        generate_ros(fig_file)
+    else:
+        print(f'invalid action "{action}", available actions [skeleton, ros]')
+        sys.exit(1)
 
 
 if __name__ == '__main__':
