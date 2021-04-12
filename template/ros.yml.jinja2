@@ -29,11 +29,11 @@ Resources:
             outputMappings:
               - target: fdl_action
                 source: begin
-        
+
           - type: task
             name: do-step
             resourceArn: "acs:fc:{{region}}:{{account_alias}}:services/{{fc_service}}/functions/{{fc_name}}"
-        
+
           - type: choice
             name: check-state
             choices:
@@ -44,7 +44,7 @@ Resources:
                   - type: wait
                     name: do-wait
                     duration: $.fdl_wait
-        
+
           - type: choice
             name: check-state-action
             {% if foreach_funcs|length > 0 %}
@@ -71,7 +71,7 @@ Resources:
             {% endif %}
             default:
               goto: do-step
-        
+
           - type: succeed
             name: completed
 
