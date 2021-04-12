@@ -2,12 +2,10 @@ import os
 import re
 import sys
 import json
-import time
 import base64
 import pathlib
 import argparse
 import tempfile
-import subprocess
 import yaml
 from zipfile import ZipFile
 from jinja2 import Template
@@ -190,13 +188,10 @@ def parse_line(line, index):
     return new_statement(line, f'_func_{line}_{index}', STATEMENT_FUNC, [line])
 
 
-def parse_fig():
-    fig_file = options.args[1]
+def parse_fig(fig_file):
     with open(fig_file, 'r') as f:
         lines = f.readlines()
-    statements = [parse_line(line.strip(), index) for index, line in enumerate(lines) if line.strip() != '']
-
-    return fig_file, statements
+    return [parse_line(line.strip(), index) for index, line in enumerate(lines) if line.strip() != '']
 
 
 def read_file(filename):
@@ -300,8 +295,8 @@ def generate_test(fig_file):
     generate_testsh()
 
 
-def generate():
-    fig_file, statements = parse_fig()
+def generate_skeleton(fig_file):
+    statements = parse_fig(fig_file)
     generate_python(statements, fig_file)
     generate_test(fig_file)
 
@@ -322,7 +317,20 @@ def create_zip_base64():
         return encoded_string.decode("utf-8")
 
 
-def generate_ros(statements):
+def generate_ros(fig_file):
+    if options.account_alias == "":
+        print("--account-alias required!")
+        sys.exit(1)
+
+    if options.arn_role == "":
+        print("--arn-role required!")
+        sys.exit(1)
+
+    if options.fc_service == "":
+        print("--fc-service required!")
+        sys.exit(1)
+
+    statements = parse_fig(fig_file)
     code_zip_b64 = create_zip_base64()
     foreach_funcs = [statement['method_name'] for statement in statements if statement['method_type'] == STATEMENT_LOOP]
     project = get_project_name()
@@ -341,95 +349,23 @@ def generate_ros(statements):
         "fc_timeout": options.fc_timeout,
         "code_zip_b64": code_zip_b64,
     }
-    config = render_tpl("ros.yml.jinja2", items)
-    ros_file = os.path.join(tempfile.mkdtemp(), "ros.yml")
-    write_file(config, ros_file)
-
-    return ros_file
-
-
-def run_shell(cmd):
-    job = subprocess.run(['bash', '-c', cmd], capture_output=True)
-    if job.returncode != 0:
-        print(f"command [{cmd}] failed. out: [{job.stdout.decode('utf-8')}] err: [{job.stderr.decode('utf-8')}]")
-        sys.exit(1)
-
-    return json.loads(job.stdout.decode('utf-8'))
-
-
-def get_ros_cmd(args):
-    return f"aliyun ros --region {options.region} {args}"
-
-
-def get_ros_stack(project):
-    cmd = get_ros_cmd("ListStacks")
-    stacks = run_shell(cmd).get('Stacks', [])
-    for s in stacks:
-        if s['StackName'] == project:
-            return s
-    return None
-
-
-def deploy_ros(ros_file):
-    with open(ros_file, 'r') as f:
-        ros_json = json.dumps(yaml.safe_load(f))
-
-    project = get_project_name()
-    stack = get_ros_stack(project)
-    if stack:
-        args = f"UpdateStack --StackId {stack['StackId']}"
-    else:
-        args = f"CreateStack --StackName {project}"
-    args += f" --TemplateBody '{ros_json}' --TimeoutInMinutes 10"
-    cmd = get_ros_cmd(args)
-    run_shell(cmd)
-
-
-def check_ros_deployment():
-    project = get_project_name()
-    stack = get_ros_stack(project)
-    if stack["Status"].endswith("_IN_PROGRESS"):
-        print(f"check deployment: {stack['Status']}, check it later ...")
-        time.sleep(2)
-        return check_ros_deployment()
-
-    if stack['Status'] not in ['CREATE_COMPLETE', 'UPDATE_COMPLETE']:
-        return False, f"check deployment: {stack['Status']}, {stack['StatusReason']}"
-
-    return True, ""
-
-
-def deploy():
-    if options.account_alias == "":
-        print("--account-alias required!")
-        sys.exit(1)
-
-    if options.arn_role == "":
-        print("--arn-role required!")
-        sys.exit(1)
-
-    if options.fc_service == "":
-        print("--fc-service required!")
-        sys.exit(1)
-
-    _, statements = parse_fig()
-    ros_file = generate_ros(statements)
-    deploy_ros(ros_file)
-
-    status, msg = check_ros_deployment()
-    if not status:
-        print(msg)
-        sys.exit(1)
+    cyaml = render_tpl("ros.yml.jinja2", items)
+    write_file(json.dumps(yaml.safe_load(cyaml)), os.path.join("ros.json"))
 
 
 def main():
+    if len(options.args) != 2:
+        print("action and fig file required!")
+        sys.exit(1)
+
     action = options.args[0]
-    if action == "init":
-        generate()
-    elif action == "deploy":
-        deploy()
+    fig_file = options.args[1]
+    if action == "skeleton":
+        generate_skeleton(fig_file)
+    elif action == "ros":
+        generate_ros(fig_file)
     else:
-        print(f'invalid action "{action}"')
+        print(f'invalid action "{action}", available actions [skeleton, ros]')
         sys.exit(1)
 
 
